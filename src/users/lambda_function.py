@@ -23,27 +23,27 @@ def get_users_from_database() -> List[Dict[str, str]]:
             "id": "1",
             "name": "John Doe",
             "email": "john@example.com",
-            "createdAt": "2024-01-15T10:30:00Z"
+            "createdAt": "2024-01-15T10:30:00Z",
         },
         {
             "id": "2",
             "name": "Jane Smith",
             "email": "jane@example.com",
-            "createdAt": "2024-01-16T14:45:00Z"
+            "createdAt": "2024-01-16T14:45:00Z",
         },
         {
             "id": "3",
             "name": "Alice Johnson",
             "email": "alice@example.com",
-            "createdAt": "2024-01-17T09:15:00Z"
-        }
+            "createdAt": "2024-01-17T09:15:00Z",
+        },
     ]
 
     # Simulate database latency
     time.sleep(0.05)
 
     logger.info("Users retrieved from database", extra={"user_count": len(users)})
-    tracer.put_annotation("user_count", len(users))
+    tracer.put_annotation("user_count", str(len(users)))
 
     return users
 
@@ -56,11 +56,14 @@ def process_users_request(event: Dict[str, Any]) -> Dict[str, Any]:
     tracer.put_annotation("path", event.get("path", "/users"))
     tracer.put_metadata("event", event)
 
-    logger.info("Processing users request", extra={
-        "path": event.get("path"),
-        "http_method": event.get("httpMethod"),
-        "user_agent": event.get("headers", {}).get("User-Agent")
-    })
+    logger.info(
+        "Processing users request",
+        extra={
+            "path": event.get("path"),
+            "http_method": event.get("httpMethod"),
+            "user_agent": event.get("headers", {}).get("User-Agent"),
+        },
+    )
 
     # Fetch users data
     users = get_users_from_database()
@@ -69,13 +72,13 @@ def process_users_request(event: Dict[str, Any]) -> Dict[str, Any]:
         "users": users,
         "count": len(users),
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "request_id": event.get("requestContext", {}).get("requestId", "unknown")
+        "request_id": event.get("requestContext", {}).get("requestId", "unknown"),
     }
 
-    logger.info("Users request processed successfully", extra={
-        "user_count": len(users),
-        "request_id": response_data["request_id"]
-    })
+    logger.info(
+        "Users request processed successfully",
+        extra={"user_count": len(users), "request_id": response_data["request_id"]},
+    )
 
     return response_data
 
@@ -99,12 +102,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     tracer.put_annotation("correlation_id", context.aws_request_id)
 
     try:
-        logger.info("Lambda invocation started", extra={
-            "request_id": context.aws_request_id,
-            "function_name": context.function_name,
-            "function_version": context.function_version,
-            "remaining_time_ms": context.get_remaining_time_in_millis()
-        })
+        logger.info(
+            "Lambda invocation started",
+            extra={
+                "request_id": context.aws_request_id,
+                "function_name": context.function_name,
+                "function_version": context.function_version,
+                "remaining_time_ms": context.get_remaining_time_in_millis(),
+            },
+        )
 
         # Add custom metrics
         metrics.add_metric(name="RequestCount", unit=MetricUnit.Count, value=1)
@@ -114,29 +120,34 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Add business metrics
         metrics.add_metric(name="SuccessCount", unit=MetricUnit.Count, value=1)
-        metrics.add_metric(name="UserCount", unit=MetricUnit.Count, value=response_data["count"])
+        metrics.add_metric(
+            name="UserCount", unit=MetricUnit.Count, value=response_data["count"]
+        )
 
         response = {
             "statusCode": 200,
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Headers": (
+                    "Content-Type,X-Amz-Date,Authorization,X-Api-Key,"
+                    "X-Amz-Security-Token"
+                ),
                 "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
                 "X-Request-ID": context.aws_request_id,
-                "Cache-Control": "max-age=300"  # Cache for 5 minutes
+                "Cache-Control": "max-age=300",  # Cache for 5 minutes
             },
-            "body": json.dumps(response_data, indent=2)
+            "body": json.dumps(response_data, indent=2),
         }
 
         logger.info("Lambda invocation completed successfully")
         return response
 
     except Exception as e:
-        logger.exception("Lambda invocation failed", extra={
-            "error": str(e),
-            "request_id": context.aws_request_id
-        })
+        logger.exception(
+            "Lambda invocation failed",
+            extra={"error": str(e), "request_id": context.aws_request_id},
+        )
 
         # Add error metrics
         metrics.add_metric(name="ErrorCount", unit=MetricUnit.Count, value=1)
@@ -146,11 +157,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "X-Request-ID": context.aws_request_id
+                "X-Request-ID": context.aws_request_id,
             },
-            "body": json.dumps({
-                "message": "Internal server error",
-                "request_id": context.aws_request_id,
-                "timestamp": datetime.utcnow().isoformat() + "Z"
-            })
+            "body": json.dumps(
+                {
+                    "message": "Internal server error",
+                    "request_id": context.aws_request_id,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                }
+            ),
         }

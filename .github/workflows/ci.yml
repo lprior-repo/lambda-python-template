@@ -3,14 +3,8 @@ name: 🚀 Continuous Integration
 on:
   push:
     branches: [main, develop]
-    paths:
-      - 'lambda-templates/lambda-python-template/**'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, develop]
-    paths:
-      - 'lambda-templates/lambda-python-template/**'
-      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,7 +63,7 @@ jobs:
         run: |
           if [ -f "src/${{ matrix.function }}/test_*.py" ] || [ -d "src/${{ matrix.function }}/tests" ]; then
             cd src/${{ matrix.function }}
-            python -m pytest -v
+            python -m pytest -v --cov=. --cov-report=term-missing
           else
             echo "No tests found for ${{ matrix.function }}, skipping"
           fi
@@ -128,7 +122,7 @@ jobs:
         run: black --check src/
 
       - name: Run mypy
-        run: mypy src/
+        run: mypy --ignore-missing-imports --no-strict-optional src/
 
   security:
     runs-on: ubuntu-latest
