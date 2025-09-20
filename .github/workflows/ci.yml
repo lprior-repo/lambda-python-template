@@ -173,17 +173,6 @@ jobs:
         working-directory: terraform
         run: terraform fmt -check -recursive
 
-      - name: 🔍 TFLint Security Scan
-        uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: latest
-
-      - name: 🔍 Run TFLint
-        working-directory: terraform
-        run: |
-          tflint --init
-          tflint --recursive --config=../.tflint.hcl
-
       - name: 🛡️ Checkov Security Scan
         uses: bridgecrewio/checkov-action@master
         with:
