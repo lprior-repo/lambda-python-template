@@ -38,9 +38,9 @@ locals {
 
 # Users table for CRUD operations
 resource "aws_dynamodb_table" "users" {
-  name           = "${local.function_name}-users"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "id"
+  name         = "${local.function_name}-users"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
 
   attribute {
     name = "id"
@@ -73,10 +73,10 @@ resource "aws_dynamodb_table" "users" {
 
 # Posts table for CRUD operations
 resource "aws_dynamodb_table" "posts" {
-  name           = "${local.function_name}-posts"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "id"
-  range_key      = "created_at"
+  name         = "${local.function_name}-posts"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+  range_key    = "created_at"
 
   attribute {
     name = "id"
@@ -115,10 +115,10 @@ resource "aws_dynamodb_table" "posts" {
 
 # Audit logs table for EventBridge events
 resource "aws_dynamodb_table" "audit_logs" {
-  name           = "${local.function_name}-audit-logs"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "event_id"
-  range_key      = "timestamp"
+  name         = "${local.function_name}-audit-logs"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "event_id"
+  range_key    = "timestamp"
 
   attribute {
     name = "event_id"
@@ -164,7 +164,7 @@ resource "aws_cloudwatch_event_rule" "crud_events" {
   event_bus_name = aws_cloudwatch_event_bus.app_events.name
 
   event_pattern = jsonencode({
-    source      = ["lambda.${local.function_name}"]
+    source = ["lambda.${local.function_name}"]
     detail-type = [
       "User Created", "User Updated", "User Deleted",
       "Post Created", "Post Updated", "Post Deleted"
@@ -208,7 +208,7 @@ resource "aws_appconfig_configuration_profile" "app_config" {
   validator {
     content = jsonencode({
       "$schema" = "http://json-schema.org/draft-07/schema#"
-      type = "object"
+      type      = "object"
       properties = {
         database = {
           type = "object"
@@ -222,9 +222,9 @@ resource "aws_appconfig_configuration_profile" "app_config" {
         api = {
           type = "object"
           properties = {
-            timeoutMs    = { type = "integer", minimum = 1000 }
-            maxRetries   = { type = "integer", minimum = 0 }
-            enableCors   = { type = "boolean" }
+            timeoutMs  = { type = "integer", minimum = 1000 }
+            maxRetries = { type = "integer", minimum = 0 }
+            enableCors = { type = "boolean" }
           }
           required = ["timeoutMs", "maxRetries", "enableCors"]
         }
@@ -232,8 +232,8 @@ resource "aws_appconfig_configuration_profile" "app_config" {
           type = "object"
           properties = {
             enableAdvancedLogging = { type = "boolean" }
-            enableMetrics        = { type = "boolean" }
-            maintenanceMode      = { type = "boolean" }
+            enableMetrics         = { type = "boolean" }
+            maintenanceMode       = { type = "boolean" }
           }
           required = ["enableAdvancedLogging", "enableMetrics", "maintenanceMode"]
         }
@@ -393,14 +393,14 @@ resource "aws_appconfig_hosted_configuration_version" "app_config_initial" {
       ttl                = 86400
     }
     api = {
-      timeoutMs    = 30000
-      maxRetries   = 3
-      enableCors   = true
+      timeoutMs  = 30000
+      maxRetries = 3
+      enableCors = true
     }
     features = {
       enableAdvancedLogging = false
-      enableMetrics        = true
-      maintenanceMode      = false
+      enableMetrics         = true
+      maintenanceMode       = false
     }
   })
 }
@@ -417,7 +417,7 @@ resource "aws_appconfig_hosted_configuration_version" "app_config_initial" {
 
 # Health check Lambda
 module "health_lambda" {
-  source = "terraform-aws-modules/lambda/aws"
+  source  = "terraform-aws-modules/lambda/aws"
   version = "8.1.0"
 
   function_name = "${local.function_name}-health"
@@ -434,21 +434,21 @@ module "health_lambda" {
   tracing_mode = "Active"
 
   environment_variables = {
-    ENVIRONMENT                = var.environment
-    PYTHONPATH                 = "/var/runtime"
-    APPCONFIG_APPLICATION_ID   = aws_appconfig_application.main.id
-    APPCONFIG_ENVIRONMENT      = var.namespace != "" ? var.namespace : "production"
-    APPCONFIG_FEATURE_FLAGS    = aws_appconfig_configuration_profile.feature_flags.name
-    APPCONFIG_APP_CONFIG       = aws_appconfig_configuration_profile.app_config.name
+    ENVIRONMENT              = var.environment
+    PYTHONPATH               = "/var/runtime"
+    APPCONFIG_APPLICATION_ID = aws_appconfig_application.main.id
+    APPCONFIG_ENVIRONMENT    = var.namespace != "" ? var.namespace : "production"
+    APPCONFIG_FEATURE_FLAGS  = aws_appconfig_configuration_profile.feature_flags.name
+    APPCONFIG_APP_CONFIG     = aws_appconfig_configuration_profile.app_config.name
 
     # AWS Lambda PowerTools for Python
-    POWERTOOLS_SERVICE_NAME      = "${local.function_name}-health"
-    POWERTOOLS_METRICS_NAMESPACE = local.function_name
-    POWERTOOLS_LOG_LEVEL         = var.environment == "production" ? "INFO" : "DEBUG"
-    POWERTOOLS_LOGGER_SAMPLE_RATE = var.environment == "production" ? "0.1" : "1"
-    POWERTOOLS_TRACE_ENABLED     = "true"
-    POWERTOOLS_TRACER_CAPTURE_RESPONSE = "true"
-    POWERTOOLS_TRACER_CAPTURE_ERROR = "true"
+    POWERTOOLS_SERVICE_NAME               = "${local.function_name}-health"
+    POWERTOOLS_METRICS_NAMESPACE          = local.function_name
+    POWERTOOLS_LOG_LEVEL                  = var.environment == "production" ? "INFO" : "DEBUG"
+    POWERTOOLS_LOGGER_SAMPLE_RATE         = var.environment == "production" ? "0.1" : "1"
+    POWERTOOLS_TRACE_ENABLED              = "true"
+    POWERTOOLS_TRACER_CAPTURE_RESPONSE    = "true"
+    POWERTOOLS_TRACER_CAPTURE_ERROR       = "true"
     POWERTOOLS_METRICS_CAPTURE_COLD_START = "true"
   }
 
@@ -485,7 +485,7 @@ module "health_lambda" {
 
 # Users CRUD Lambda
 module "users_lambda" {
-  source = "terraform-aws-modules/lambda/aws"
+  source  = "terraform-aws-modules/lambda/aws"
   version = "8.1.0"
 
   function_name = "${local.function_name}-users"
@@ -502,23 +502,23 @@ module "users_lambda" {
   tracing_mode = "Active"
 
   environment_variables = {
-    ENVIRONMENT                = var.environment
-    PYTHONPATH                 = "/var/runtime"
-    USERS_TABLE_NAME           = aws_dynamodb_table.users.name
-    EVENT_BUS_NAME             = aws_cloudwatch_event_bus.app_events.name
-    APPCONFIG_APPLICATION_ID   = aws_appconfig_application.main.id
-    APPCONFIG_ENVIRONMENT      = var.namespace != "" ? var.namespace : "production"
-    APPCONFIG_FEATURE_FLAGS    = aws_appconfig_configuration_profile.feature_flags.name
-    APPCONFIG_APP_CONFIG       = aws_appconfig_configuration_profile.app_config.name
+    ENVIRONMENT              = var.environment
+    PYTHONPATH               = "/var/runtime"
+    USERS_TABLE_NAME         = aws_dynamodb_table.users.name
+    EVENT_BUS_NAME           = aws_cloudwatch_event_bus.app_events.name
+    APPCONFIG_APPLICATION_ID = aws_appconfig_application.main.id
+    APPCONFIG_ENVIRONMENT    = var.namespace != "" ? var.namespace : "production"
+    APPCONFIG_FEATURE_FLAGS  = aws_appconfig_configuration_profile.feature_flags.name
+    APPCONFIG_APP_CONFIG     = aws_appconfig_configuration_profile.app_config.name
 
     # AWS Lambda PowerTools for Python
-    POWERTOOLS_SERVICE_NAME      = "${local.function_name}-users"
-    POWERTOOLS_METRICS_NAMESPACE = local.function_name
-    POWERTOOLS_LOG_LEVEL         = var.environment == "production" ? "INFO" : "DEBUG"
-    POWERTOOLS_LOGGER_SAMPLE_RATE = var.environment == "production" ? "0.1" : "1"
-    POWERTOOLS_TRACE_ENABLED     = "true"
-    POWERTOOLS_TRACER_CAPTURE_RESPONSE = "true"
-    POWERTOOLS_TRACER_CAPTURE_ERROR = "true"
+    POWERTOOLS_SERVICE_NAME               = "${local.function_name}-users"
+    POWERTOOLS_METRICS_NAMESPACE          = local.function_name
+    POWERTOOLS_LOG_LEVEL                  = var.environment == "production" ? "INFO" : "DEBUG"
+    POWERTOOLS_LOGGER_SAMPLE_RATE         = var.environment == "production" ? "0.1" : "1"
+    POWERTOOLS_TRACE_ENABLED              = "true"
+    POWERTOOLS_TRACER_CAPTURE_RESPONSE    = "true"
+    POWERTOOLS_TRACER_CAPTURE_ERROR       = "true"
     POWERTOOLS_METRICS_CAPTURE_COLD_START = "true"
   }
 
@@ -568,7 +568,7 @@ module "users_lambda" {
 
 # Posts CRUD Lambda
 module "posts_lambda" {
-  source = "terraform-aws-modules/lambda/aws"
+  source  = "terraform-aws-modules/lambda/aws"
   version = "8.1.0"
 
   function_name = "${local.function_name}-posts"
@@ -585,24 +585,24 @@ module "posts_lambda" {
   tracing_mode = "Active"
 
   environment_variables = {
-    ENVIRONMENT                = var.environment
-    PYTHONPATH                 = "/var/runtime"
-    POSTS_TABLE_NAME           = aws_dynamodb_table.posts.name
-    USERS_TABLE_NAME           = aws_dynamodb_table.users.name
-    EVENT_BUS_NAME             = aws_cloudwatch_event_bus.app_events.name
-    APPCONFIG_APPLICATION_ID   = aws_appconfig_application.main.id
-    APPCONFIG_ENVIRONMENT      = var.namespace != "" ? var.namespace : "production"
-    APPCONFIG_FEATURE_FLAGS    = aws_appconfig_configuration_profile.feature_flags.name
-    APPCONFIG_APP_CONFIG       = aws_appconfig_configuration_profile.app_config.name
+    ENVIRONMENT              = var.environment
+    PYTHONPATH               = "/var/runtime"
+    POSTS_TABLE_NAME         = aws_dynamodb_table.posts.name
+    USERS_TABLE_NAME         = aws_dynamodb_table.users.name
+    EVENT_BUS_NAME           = aws_cloudwatch_event_bus.app_events.name
+    APPCONFIG_APPLICATION_ID = aws_appconfig_application.main.id
+    APPCONFIG_ENVIRONMENT    = var.namespace != "" ? var.namespace : "production"
+    APPCONFIG_FEATURE_FLAGS  = aws_appconfig_configuration_profile.feature_flags.name
+    APPCONFIG_APP_CONFIG     = aws_appconfig_configuration_profile.app_config.name
 
     # AWS Lambda PowerTools for Python
-    POWERTOOLS_SERVICE_NAME      = "${local.function_name}-posts"
-    POWERTOOLS_METRICS_NAMESPACE = local.function_name
-    POWERTOOLS_LOG_LEVEL         = var.environment == "production" ? "INFO" : "DEBUG"
-    POWERTOOLS_LOGGER_SAMPLE_RATE = var.environment == "production" ? "0.1" : "1"
-    POWERTOOLS_TRACE_ENABLED     = "true"
-    POWERTOOLS_TRACER_CAPTURE_RESPONSE = "true"
-    POWERTOOLS_TRACER_CAPTURE_ERROR = "true"
+    POWERTOOLS_SERVICE_NAME               = "${local.function_name}-posts"
+    POWERTOOLS_METRICS_NAMESPACE          = local.function_name
+    POWERTOOLS_LOG_LEVEL                  = var.environment == "production" ? "INFO" : "DEBUG"
+    POWERTOOLS_LOGGER_SAMPLE_RATE         = var.environment == "production" ? "0.1" : "1"
+    POWERTOOLS_TRACE_ENABLED              = "true"
+    POWERTOOLS_TRACER_CAPTURE_RESPONSE    = "true"
+    POWERTOOLS_TRACER_CAPTURE_ERROR       = "true"
     POWERTOOLS_METRICS_CAPTURE_COLD_START = "true"
   }
 
@@ -655,7 +655,7 @@ module "posts_lambda" {
 
 # Event processor Lambda for audit logging
 module "event_processor_lambda" {
-  source = "terraform-aws-modules/lambda/aws"
+  source  = "terraform-aws-modules/lambda/aws"
   version = "8.1.0"
 
   function_name = "${local.function_name}-event-processor"
@@ -672,22 +672,22 @@ module "event_processor_lambda" {
   tracing_mode = "Active"
 
   environment_variables = {
-    ENVIRONMENT                = var.environment
-    PYTHONPATH                 = "/var/runtime"
-    AUDIT_TABLE_NAME           = aws_dynamodb_table.audit_logs.name
-    APPCONFIG_APPLICATION_ID   = aws_appconfig_application.main.id
-    APPCONFIG_ENVIRONMENT      = var.namespace != "" ? var.namespace : "production"
-    APPCONFIG_FEATURE_FLAGS    = aws_appconfig_configuration_profile.feature_flags.name
-    APPCONFIG_APP_CONFIG       = aws_appconfig_configuration_profile.app_config.name
+    ENVIRONMENT              = var.environment
+    PYTHONPATH               = "/var/runtime"
+    AUDIT_TABLE_NAME         = aws_dynamodb_table.audit_logs.name
+    APPCONFIG_APPLICATION_ID = aws_appconfig_application.main.id
+    APPCONFIG_ENVIRONMENT    = var.namespace != "" ? var.namespace : "production"
+    APPCONFIG_FEATURE_FLAGS  = aws_appconfig_configuration_profile.feature_flags.name
+    APPCONFIG_APP_CONFIG     = aws_appconfig_configuration_profile.app_config.name
 
     # AWS Lambda PowerTools for Python
-    POWERTOOLS_SERVICE_NAME      = "${local.function_name}-event-processor"
-    POWERTOOLS_METRICS_NAMESPACE = local.function_name
-    POWERTOOLS_LOG_LEVEL         = var.environment == "production" ? "INFO" : "DEBUG"
-    POWERTOOLS_LOGGER_SAMPLE_RATE = var.environment == "production" ? "0.1" : "1"
-    POWERTOOLS_TRACE_ENABLED     = "true"
-    POWERTOOLS_TRACER_CAPTURE_RESPONSE = "true"
-    POWERTOOLS_TRACER_CAPTURE_ERROR = "true"
+    POWERTOOLS_SERVICE_NAME               = "${local.function_name}-event-processor"
+    POWERTOOLS_METRICS_NAMESPACE          = local.function_name
+    POWERTOOLS_LOG_LEVEL                  = var.environment == "production" ? "INFO" : "DEBUG"
+    POWERTOOLS_LOGGER_SAMPLE_RATE         = var.environment == "production" ? "0.1" : "1"
+    POWERTOOLS_TRACE_ENABLED              = "true"
+    POWERTOOLS_TRACER_CAPTURE_RESPONSE    = "true"
+    POWERTOOLS_TRACER_CAPTURE_ERROR       = "true"
     POWERTOOLS_METRICS_CAPTURE_COLD_START = "true"
   }
 
@@ -732,7 +732,7 @@ module "event_processor_lambda" {
 # ========================================
 
 module "api_gateway" {
-  source = "terraform-aws-modules/apigateway-v2/aws"
+  source  = "terraform-aws-modules/apigateway-v2/aws"
   version = "5.3.1"
 
   name          = "${local.function_name}-api"
@@ -748,7 +748,7 @@ module "api_gateway" {
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_origins     = ["https://localhost:3000", "https://example.com"]
     expose_headers    = ["date", "keep-alive"]
-    max_age          = 300
+    max_age           = 300
     allow_credentials = false
   }
 
@@ -763,18 +763,18 @@ module "api_gateway" {
     }
 
     # Users CRUD
-    "GET /users"          = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "GET /users/{id}"     = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "POST /users"         = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "PUT /users/{id}"     = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "DELETE /users/{id}"  = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "GET /users"         = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "GET /users/{id}"    = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "POST /users"        = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "PUT /users/{id}"    = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "DELETE /users/{id}" = { integration = { uri = module.users_lambda.lambda_function_arn, payload_format_version = "2.0" } }
 
     # Posts CRUD
-    "GET /posts"          = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "GET /posts/{id}"     = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "POST /posts"         = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "PUT /posts/{id}"     = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
-    "DELETE /posts/{id}"  = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "GET /posts"         = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "GET /posts/{id}"    = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "POST /posts"        = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "PUT /posts/{id}"    = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
+    "DELETE /posts/{id}" = { integration = { uri = module.posts_lambda.lambda_function_arn, payload_format_version = "2.0" } }
   }
 
   tags = local.common_tags

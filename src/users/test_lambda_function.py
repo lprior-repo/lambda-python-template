@@ -71,7 +71,7 @@ class TestProcessUsersRequest:
 
     def test_process_users_request_with_minimal_event(self):
         """Test processing users request with minimal event data."""
-        event = {}
+        event: dict[str, any] = {}
 
         result = process_users_request(event)
 
@@ -194,7 +194,7 @@ class TestLambdaHandler:
 
     def test_lambda_handler_empty_event(self):
         """Test lambda handler with empty event."""
-        event = {}
+        event: dict[str, any] = {}
         context = Mock()
         context.aws_request_id = "empty-event-id"
         context.function_name = "users-function"

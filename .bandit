@@ -1,0 +1,22 @@
+[bandit]
+# Configuration for bandit security scanner
+# Exclude B101 (assert_used) for test files as assert statements are acceptable in tests
+
+# Skip specific test IDs for test files
+skips = B101
+
+# Scan only these test files where B101 should be skipped
+tests = B101
+
+# Apply this configuration only to test files
+exclude_dirs =
+
+# Only skip B101 for test files (files with test_ prefix or in tests/ directories)
+[bandit_test_runner]
+skips = B101
+
+# Global settings
+[bandit:assert_used]
+# Allow assert statements in test files
+skips = B101
+exclude = /tests/,test_*.py

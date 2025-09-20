@@ -53,7 +53,7 @@ class TestProcessHelloRequest:
 
     def test_process_hello_request_with_minimal_event(self):
         """Test processing hello request with minimal event data."""
-        event = {}
+        event: dict[str, any] = {}
 
         with patch("lambda_function.get_app_version", return_value="v1.0.0"):
             result = process_hello_request(event)
@@ -148,7 +148,7 @@ class TestLambdaHandler:
 
     def test_lambda_handler_empty_event(self):
         """Test lambda handler with empty event."""
-        event = {}
+        event: dict[str, any] = {}
         context = Mock()
         context.aws_request_id = "empty-event-id"
         context.function_name = "hello-function"
