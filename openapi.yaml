@@ -1,140 +1,412 @@
 openapi: 3.0.3
 info:
-  title: Python Lambda Template API
+  title: Enhanced Orders API
   description: |
-    A production-ready Core API Service template following the Serverless Acceleration Platform blueprint.
+    A comprehensive orders management API built with AWS Lambda and serverless.tf modules.
 
-    This API demonstrates:
-    - API-First design with OpenAPI as source of truth
-    - Well-Architected patterns with comprehensive observability
-    - Test-First development with pytest framework
-    - Velocity-focused deployment pipeline
+    This API demonstrates advanced patterns from the aws-lambda-handler-cookbook including:
+    - Three-layer architecture (handlers, logic, dal)
+    - Lambda Powertools with idempotency
+    - AWS AppConfig for feature flags
+    - Comprehensive error handling and validation
+    - Full observability (logs, metrics, tracing)
+
+    ## Features
+    - Order lifecycle management (create, read, update, cancel)
+    - Real-time health monitoring
+    - Business metrics and statistics
+    - Idempotent operations
+    - Comprehensive error responses
+    - CORS support
+
+    ## Authentication
+    Currently no authentication is required, but the API is designed to easily integrate
+    with AWS Cognito, API Keys, or custom authorizers.
+
   version: 1.0.0
   contact:
-    name: Platform Engineering
-    email: platform@company.com
+    name: API Support
+    email: support@example.com
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://api-dev.company.com/v1
-    description: Development environment
-  - url: https://api-staging.company.com/v1
-    description: Staging environment
-  - url: https://api.company.com/v1
-    description: Production environment
+  - url: https://api.example.com/api/v1
+    description: Production server
+  - url: https://staging-api.example.com/api/v1
+    description: Staging server
+  - url: http://localhost:3000/api/v1
+    description: Local development server
 
 tags:
-  - name: Health
-    description: Service health and readiness endpoints
-  - name: Hello
-    description: Hello world service endpoints with Python Powertools
-  - name: Users
-    description: User management endpoints with DynamoDB
+  - name: health
+    description: Health check and system monitoring endpoints
+  - name: orders
+    description: Order management operations
+  - name: statistics
+    description: Business metrics and reporting
 
 paths:
   /health:
     get:
-      tags: [Health]
+      tags:
+        - health
       summary: Health check endpoint
-      description: Returns service health status and dependencies
+      description: |
+        Comprehensive health check that verifies:
+        - DynamoDB connectivity and performance
+        - AWS AppConfig integration
+        - Lambda environment status
+        - System metrics (when detailed=true)
       operationId: getHealth
+      parameters:
+        - name: include_details
+          in: query
+          description: Include detailed health information
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Service is healthy
+          description: Service is healthy or degraded
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: Healthy service
+                  value:
+                    status: healthy
+                    timestamp: "2024-01-15T10:30:00Z"
+                    version: "1.0.0"
+                    environment: "production"
+                    function_name: "orders-health"
+                    request_id: "12345-67890"
+                    response_time_ms: 45.2
+                    checks:
+                      total: 3
+                      healthy: 3
+                      degraded: 0
+                      unhealthy: 0
+                degraded:
+                  summary: Degraded service
+                  value:
+                    status: degraded
+                    timestamp: "2024-01-15T10:30:00Z"
+                    version: "1.0.0"
+                    environment: "production"
+                    function_name: "orders-health"
+                    request_id: "12345-67890"
+                    response_time_ms: 89.5
+                    checks:
+                      total: 3
+                      healthy: 2
+                      degraded: 1
+                      unhealthy: 0
         '503':
           description: Service is unhealthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                unhealthy:
+                  summary: Unhealthy service
+                  value:
+                    status: unhealthy
+                    timestamp: "2024-01-15T10:30:00Z"
+                    version: "1.0.0"
+                    environment: "production"
+                    function_name: "orders-health"
+                    request_id: "12345-67890"
+                    response_time_ms: 150.0
+                    checks:
+                      total: 3
+                      healthy: 1
+                      degraded: 0
+                      unhealthy: 2
 
-  /hello:
+  /orders:
     get:
-      tags: [Hello]
-      summary: Hello world endpoint
-      description: Returns a greeting message with Python Powertools observability
-      operationId: getHello
+      tags:
+        - orders
+      summary: List orders
+      description: |
+        Retrieve a paginated list of orders with optional filtering.
+        Supports filtering by customer email and order status.
+      operationId: listOrders
       parameters:
-        - name: name
+        - name: customer_email
           in: query
-          description: Name to include in greeting
+          description: Filter orders by customer email
           required: false
           schema:
             type: string
-            example: "Python Developer"
-      responses:
-        '200':
-          description: Successful greeting
-          headers:
-            X-Request-ID:
-              description: Unique request identifier for tracing
-              schema:
-                type: string
-                format: uuid
-            X-Correlation-ID:
-              description: Correlation ID for distributed tracing
-              schema:
-                type: string
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HelloResponse'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /users:
-    get:
-      tags: [Users]
-      summary: List users
-      description: Retrieve a list of users with pagination from DynamoDB
-      operationId: getUsers
-      parameters:
+            format: email
+          example: "john.doe@example.com"
+        - name: status
+          in: query
+          description: Filter orders by status
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
         - name: limit
           in: query
-          description: Maximum number of users to return
+          description: Maximum number of orders to return (1-100)
           required: false
           schema:
             type: integer
             minimum: 1
             maximum: 100
-            default: 10
-        - name: cursor
+            default: 50
+        - name: last_evaluated_key
           in: query
-          description: Pagination cursor for next page
+          description: Pagination token for retrieving next page
           required: false
           schema:
             type: string
       responses:
         '200':
-          description: Successful user list retrieval
+          description: List of orders retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UsersResponse'
+                $ref: '#/components/schemas/OrdersList'
         '400':
-          description: Bad request
+          description: Invalid request parameters
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
+        '503':
+          description: Service temporarily unavailable (maintenance mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - orders
+      summary: Create a new order
+      description: |
+        Create a new order with automatic validation and business rule enforcement.
+        This operation is idempotent based on request body content.
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            examples:
+              basic_order:
+                summary: Basic order
+                value:
+                  customer_name: "John Doe"
+                  customer_email: "john.doe@example.com"
+                  order_item_count: 5
+              order_with_notes:
+                summary: Order with notes
+                value:
+                  customer_name: "Jane Smith"
+                  customer_email: "jane.smith@example.com"
+                  order_item_count: 3
+                  notes: "Please deliver after 5 PM"
+      responses:
+        '201':
+          description: Order created successfully
+          headers:
+            Location:
+              description: URL of the created order
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrderResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Request already in progress (idempotency collision)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Business logic validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{order_id}:
+    parameters:
+      - name: order_id
+        in: path
+        required: true
+        description: Unique identifier for the order
+        schema:
+          type: string
+          format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+    get:
+      tags:
+        - orders
+      summary: Get order by ID
+      description: Retrieve detailed information about a specific order
+      operationId: getOrderById
+      responses:
+        '200':
+          description: Order retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - orders
+      summary: Update an existing order
+      description: |
+        Update order details. Only orders in certain statuses can be updated.
+        This operation is idempotent based on request body content.
+      operationId: updateOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderRequest'
+            examples:
+              update_quantity:
+                summary: Update item count
+                value:
+                  order_item_count: 8
+              update_notes:
+                summary: Update notes
+                value:
+                  notes: "Updated delivery instructions: Leave at front door"
+              update_both:
+                summary: Update quantity and notes
+                value:
+                  order_item_count: 10
+                  notes: "Rush order - expedite processing"
+      responses:
+        '200':
+          description: Order updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateOrderResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Request already in progress (idempotency collision)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Order cannot be updated in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - orders
+      summary: Cancel an order
+      description: |
+        Cancel an order if it's in a cancellable status.
+        Cancelled orders cannot be restored.
+      operationId: cancelOrder
+      parameters:
+        - name: reason
+          in: query
+          description: Reason for cancelling the order
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+            default: "Customer requested cancellation"
+          example: "Customer changed mind"
+      responses:
+        '200':
+          description: Order cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateOrderResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Order cannot be cancelled in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/statistics:
+    get:
+      tags:
+        - statistics
+      summary: Get order statistics
+      description: |
+        Retrieve comprehensive business metrics and statistics about orders.
+        Useful for monitoring, reporting, and business intelligence.
+      operationId: getOrderStatistics
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatistics'
+        '503':
+          description: Service temporarily unavailable
           content:
             application/json:
               schema:
@@ -142,181 +414,544 @@ paths:
 
 components:
   schemas:
+    OrderStatus:
+      type: string
+      enum:
+        - pending
+        - confirmed
+        - processing
+        - shipped
+        - delivered
+        - cancelled
+        - refunded
+      description: Current status of the order
+      example: pending
+
+    Order:
+      type: object
+      required:
+        - id
+        - customer_name
+        - customer_email
+        - order_item_count
+        - status
+        - created_at
+        - updated_at
+        - total_amount
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the order
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        customer_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Customer name for the order
+          example: "John Doe"
+        customer_email:
+          type: string
+          format: email
+          description: Customer email address
+          example: "john.doe@example.com"
+        order_item_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of items in the order
+          example: 5
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional notes for the order
+          example: "Please deliver after 5 PM"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO timestamp when the order was created
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO timestamp when the order was last updated
+          example: "2024-01-15T10:30:00Z"
+        estimated_delivery:
+          type: string
+          format: date-time
+          nullable: true
+          description: Estimated delivery ISO timestamp
+          example: "2024-01-18T15:00:00Z"
+        total_amount:
+          type: number
+          format: float
+          minimum: 0
+          description: Total order amount in USD
+          example: 250.0
+        cancellation_reason:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: Reason for cancellation if cancelled
+          example: "Customer requested cancellation"
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - customer_name
+        - customer_email
+        - order_item_count
+      properties:
+        customer_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: "^[a-zA-Z\\s]+$"
+          description: Customer name for the order
+          example: "John Doe"
+        customer_email:
+          type: string
+          format: email
+          description: Customer email address
+          example: "john.doe@example.com"
+        order_item_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of items in the order
+          example: 5
+        notes:
+          type: string
+          maxLength: 500
+          description: Optional notes for the order
+          example: "Please deliver after 5 PM"
+
+    UpdateOrderRequest:
+      type: object
+      properties:
+        order_item_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Updated number of items in the order
+          example: 8
+        notes:
+          type: string
+          maxLength: 500
+          description: Updated notes for the order
+          example: "Updated delivery instructions"
+
+    CreateOrderResponse:
+      type: object
+      required:
+        - order_id
+        - status
+        - total_amount
+        - created_at
+        - message
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the created order
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total_amount:
+          type: number
+          format: float
+          minimum: 0
+          description: Total order amount in USD
+          example: 250.0
+        created_at:
+          type: string
+          format: date-time
+          description: ISO timestamp when the order was created
+          example: "2024-01-15T10:30:00Z"
+        message:
+          type: string
+          description: Success message
+          example: "Order created successfully"
+
+    GetOrderResponse:
+      type: object
+      required:
+        - order
+      properties:
+        order:
+          $ref: '#/components/schemas/Order'
+
+    UpdateOrderResponse:
+      type: object
+      required:
+        - order
+        - message
+      properties:
+        order:
+          $ref: '#/components/schemas/Order'
+        message:
+          type: string
+          description: Success message
+          example: "Order updated successfully"
+
+    OrdersList:
+      type: object
+      required:
+        - orders
+        - count
+        - scanned_count
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+          description: List of orders
+        count:
+          type: integer
+          minimum: 0
+          description: Number of orders returned in this response
+          example: 25
+        scanned_count:
+          type: integer
+          minimum: 0
+          description: Number of orders scanned to generate this response
+          example: 25
+        last_evaluated_key:
+          type: object
+          description: Pagination token for retrieving the next page
+          additionalProperties: true
+
+    OrderStatistics:
+      type: object
+      required:
+        - total_orders
+        - total_revenue
+        - average_order_value
+        - average_items_per_order
+        - status_distribution
+        - generated_at
+      properties:
+        total_orders:
+          type: integer
+          minimum: 0
+          description: Total number of orders
+          example: 1250
+        total_revenue:
+          type: number
+          format: float
+          minimum: 0
+          description: Total revenue from all orders
+          example: 62500.0
+        average_order_value:
+          type: number
+          format: float
+          minimum: 0
+          description: Average order value
+          example: 50.0
+        average_items_per_order:
+          type: number
+          format: float
+          minimum: 0
+          description: Average number of items per order
+          example: 3.2
+        status_distribution:
+          type: object
+          description: Count of orders by status
+          additionalProperties:
+            type: integer
+            minimum: 0
+          example:
+            pending: 45
+            confirmed: 30
+            processing: 25
+            shipped: 20
+            delivered: 100
+            cancelled: 25
+            refunded: 5
+        generated_at:
+          type: string
+          format: date-time
+          description: ISO timestamp when statistics were generated
+          example: "2024-01-15T10:30:00Z"
+
     HealthResponse:
       type: object
       required:
         - status
         - timestamp
         - version
-        - service
+        - environment
+        - function_name
+        - request_id
+        - response_time_ms
+        - checks
       properties:
         status:
           type: string
-          enum: [healthy, unhealthy]
+          enum: [healthy, degraded, unhealthy]
+          description: Overall health status
           example: healthy
         timestamp:
           type: string
           format: date-time
+          description: ISO timestamp when health check was performed
           example: "2024-01-15T10:30:00Z"
         version:
           type: string
-          example: "1.0.0"
-        service:
-          type: string
-          example: "python-lambda-template"
-        requestId:
-          type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        environment:
-          type: string
-          example: "dev"
-        dependencies:
-          type: object
-          properties:
-            dynamodb:
-              type: string
-              enum: [healthy, unhealthy]
-            s3:
-              type: string
-              enum: [healthy, unhealthy]
-
-    HelloResponse:
-      type: object
-      required:
-        - message
-        - timestamp
-        - requestId
-        - version
-      properties:
-        message:
-          type: string
-          example: "Hello from Python Lambda with Powertools!"
-        path:
-          type: string
-          example: "/hello"
-        timestamp:
-          type: string
-          format: date-time
-          example: "2024-01-15T10:30:00Z"
-        requestId:
-          type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        version:
-          type: string
+          description: Service version
           example: "1.0.0"
         environment:
           type: string
-          example: "dev"
-        powertools:
+          description: Environment name
+          example: "production"
+        function_name:
+          type: string
+          description: Lambda function name
+          example: "orders-health"
+        request_id:
+          type: string
+          description: Unique request identifier
+          example: "12345-67890"
+        response_time_ms:
+          type: number
+          format: float
+          description: Total health check response time in milliseconds
+          example: 45.2
+        checks:
           type: object
-          properties:
-            logger:
-              type: boolean
-              example: true
-            tracer:
-              type: boolean
-              example: true
-            metrics:
-              type: boolean
-              example: true
-
-    UsersResponse:
-      type: object
-      required:
-        - users
-        - pagination
-      properties:
-        users:
-          type: array
-          items:
-            $ref: '#/components/schemas/User'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-        metadata:
-          type: object
+          required:
+            - total
+            - healthy
+            - degraded
+            - unhealthy
           properties:
             total:
               type: integer
-              example: 42
-            scannedCount:
+              minimum: 0
+              description: Total number of health checks performed
+              example: 3
+            healthy:
               type: integer
-              example: 10
-
-    User:
-      type: object
-      required:
-        - id
-        - email
-        - createdAt
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        email:
-          type: string
-          format: email
-          example: "user@company.com"
-        name:
-          type: string
-          example: "Python Developer"
-        createdAt:
-          type: string
-          format: date-time
-          example: "2024-01-15T10:30:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          example: "2024-01-15T10:30:00Z"
-        status:
-          type: string
-          enum: [active, inactive, suspended]
-          example: active
-
-    Pagination:
-      type: object
-      required:
-        - limit
-        - hasMore
-      properties:
-        limit:
-          type: integer
-          example: 10
-        cursor:
-          type: string
-          nullable: true
-          example: "eyJwayI6InVzZXIjMTIzIn0="
-        hasMore:
-          type: boolean
-          example: true
+              minimum: 0
+              description: Number of healthy components
+              example: 3
+            degraded:
+              type: integer
+              minimum: 0
+              description: Number of degraded components
+              example: 0
+            unhealthy:
+              type: integer
+              minimum: 0
+              description: Number of unhealthy components
+              example: 0
+        details:
+          type: object
+          description: Detailed health information (when include_details=true)
+          properties:
+            components:
+              type: array
+              items:
+                type: object
+                properties:
+                  component:
+                    type: string
+                    description: Component name
+                    example: "dynamodb"
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                    example: "healthy"
+                  response_time_ms:
+                    type: number
+                    format: float
+                    example: 15.5
+                  error:
+                    type: string
+                    description: Error message if unhealthy
+            system_metrics:
+              type: object
+              properties:
+                memory_usage_percent:
+                  type: number
+                  format: float
+                  example: 45.2
+                available_memory_mb:
+                  type: number
+                  format: float
+                  example: 256.0
+                cpu_usage_percent:
+                  type: number
+                  format: float
+                  example: 12.5
 
     ErrorResponse:
       type: object
       required:
         - error
-        - message
-        - timestamp
-        - requestId
       properties:
         error:
-          type: string
-          example: "ValidationError"
-        message:
-          type: string
-          example: "Invalid parameter value"
-        timestamp:
-          type: string
-          format: date-time
-          example: "2024-01-15T10:30:00Z"
-        requestId:
-          type: string
-          format: uuid
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        path:
-          type: string
-          example: "/hello"
-        details:
           type: object
-          description: Additional error context and validation details
+          required:
+            - code
+            - message
+            - error_id
+            - timestamp
+          properties:
+            code:
+              type: string
+              description: Error code for programmatic handling
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Human-readable error message
+              example: "Invalid input provided. Please check your request and try again."
+            error_id:
+              type: string
+              description: Unique error identifier for tracking
+              example: "error-12345-67890"
+            timestamp:
+              type: string
+              format: date-time
+              description: ISO timestamp when error occurred
+              example: "2024-01-15T10:30:00Z"
+            details:
+              type: object
+              description: Additional error context
+              properties:
+                operation:
+                  type: string
+                  example: "create_order"
+                resource_id:
+                  type: string
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+            field_errors:
+              type: array
+              description: Field-specific validation errors
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    description: Field name with error
+                    example: "customer_email"
+                  message:
+                    type: string
+                    description: Field error message
+                    example: "Invalid email format"
+        retry_after:
+          type: integer
+          description: Seconds to wait before retrying (for rate limiting)
+          example: 60
+
+  responses:
+    BadRequest:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    UnprocessableEntity:
+      description: Business logic validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  parameters:
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      description: Unique identifier for the order
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+    IncludeDetails:
+      name: include_details
+      in: query
+      description: Include detailed information in response
+      required: false
+      schema:
+        type: boolean
+        default: false
+
+  examples:
+    SampleOrder:
+      summary: Sample order
+      value:
+        id: "550e8400-e29b-41d4-a716-446655440000"
+        customer_name: "John Doe"
+        customer_email: "john.doe@example.com"
+        order_item_count: 5
+        status: "pending"
+        notes: "Please deliver after 5 PM"
+        created_at: "2024-01-15T10:30:00Z"
+        updated_at: "2024-01-15T10:30:00Z"
+        estimated_delivery: "2024-01-18T15:00:00Z"
+        total_amount: 250.0
+        cancellation_reason: null
+
+    ValidationError:
+      summary: Validation error example
+      value:
+        error:
+          code: "VALIDATION_ERROR"
+          message: "Invalid input provided. Please check your request and try again."
+          error_id: "error-12345-67890"
+          timestamp: "2024-01-15T10:30:00Z"
+          field_errors:
+            - field: "customer_email"
+              message: "Invalid email format"
+            - field: "order_item_count"
+              message: "Must be greater than 0"
+
+x-tagGroups:
+  - name: API Operations
+    tags:
+      - health
+      - orders
+      - statistics
+
+x-servers:
+  - url: "{protocol}://{host}/api/{version}"
+    description: Configurable server
+    variables:
+      protocol:
+        enum:
+          - http
+          - https
+        default: https
+      host:
+        default: api.example.com
+      version:
+        enum:
+          - v1
+        default: v1

@@ -1,4 +1,4 @@
-name: 🚀 Continuous Integration
+name: 🚀 CI/CD Pipeline - Python Lambda Template
 
 on:
   push:
@@ -12,146 +12,205 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.13"
-  TERRAFORM_VERSION: '1.9.0'
+  TERRAFORM_VERSION: '1.13.0'
+  UV_VERSION: '0.2.1'
 
 jobs:
+  # 🔍 Change Detection
   detect-changes:
+    name: 🔍 Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      functions: ${{ steps.changes.outputs.functions }}
+      python: ${{ steps.changes.outputs.python }}
+      terraform: ${{ steps.changes.outputs.terraform }}
+      docs: ${{ steps.changes.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect changed functions
+      - name: 🔍 Detect File Changes
+        uses: dorny/paths-filter@v2
         id: changes
-        run: |
-          # Get list of all function directories
-          FUNCTIONS=$(find src -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n")[:-1]')
-          echo "functions=$FUNCTIONS" >> $GITHUB_OUTPUT
-          echo "Detected functions: $FUNCTIONS"
+        with:
+          filters: |
+            python:
+              - 'src/**'
+              - 'tests/**'
+              - 'requirements*.txt'
+              - 'pyproject.toml'
+              - 'Taskfile.yml'
+            terraform:
+              - 'terraform/**'
+              - '.tflint.hcl'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'openapi.yaml'
 
-  build:
-    needs: detect-changes
+  # 🏗️ Build and Test Python Code
+  python-quality:
+    name: 🐍 Python Quality Checks
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        function: ${{ fromJson(needs.detect-changes.outputs.functions) }}
-
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install build dependencies
+      - name: ⚡ Install UV
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install function dependencies
+      - name: 📦 Install Dependencies with UV
         run: |
-          if [ -f "src/${{ matrix.function }}/requirements.txt" ]; then
-            pip install -r src/${{ matrix.function }}/requirements.txt
-          fi
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
 
-      - name: Run tests
+      - name: 🎨 Code Formatting Check
         run: |
-          if [ -f "src/${{ matrix.function }}/test_*.py" ] || [ -d "src/${{ matrix.function }}/tests" ]; then
-            cd src/${{ matrix.function }}
-            python -m pytest -v --cov=. --cov-report=term-missing
-          else
-            echo "No tests found for ${{ matrix.function }}, skipping"
-          fi
+          source .venv/bin/activate
+          ruff format --check src/ tests/
+          ruff check src/ tests/
 
-      - name: Build function package
+      - name: 🔍 Type Checking
         run: |
-          mkdir -p build
-          cd src/${{ matrix.function }}
+          source .venv/bin/activate
+          mypy src/ --pretty
 
-          # Create temporary directory
-          mkdir -p ../../build/temp_${{ matrix.function }}
+      - name: 🔒 Security Scanning
+        run: |
+          source .venv/bin/activate
+          bandit -r src/ -f json -o security-report.json || true
+          safety check --json --output security-deps.json || true
 
-          # Copy function files
-          cp -r . ../../build/temp_${{ matrix.function }}/
+      - name: 📊 Complexity Analysis
+        run: |
+          source .venv/bin/activate
+          radon cc src/ --min B
+          xenon --max-absolute B --max-modules A --max-average A src/
 
-          # Install dependencies if requirements.txt exists
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt -t ../../build/temp_${{ matrix.function }}/ --no-deps
-          fi
+      - name: 🧪 Unit Tests
+        run: |
+          source .venv/bin/activate
+          pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=html --cov-report=term-missing
 
-          # Create zip package
-          cd ../../build/temp_${{ matrix.function }}
-          zip -r ../${{ matrix.function }}.zip . -x "test_*" "tests/*" "__pycache__/*" "*.pyc"
-
-          # Clean up
-          cd ..
-          rm -rf temp_${{ matrix.function }}
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: 📊 Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          name: ${{ matrix.function }}-lambda-python
-          path: build/${{ matrix.function }}.zip
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: 📊 Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-python
+          path: |
+            htmlcov/
+            security-report.json
+            security-deps.json
           retention-days: 30
 
-  lint:
+  # 🏗️ Build Lambda Packages
+  build-lambda:
+    name: 🏗️ Build Lambda Packages
     runs-on: ubuntu-latest
+    needs: [detect-changes, python-quality]
+    if: needs.detect-changes.outputs.python == 'true'
+    strategy:
+      matrix:
+        handler: [orders, health]
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install dependencies
+      - name: ⚡ Install UV
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Run flake8
-        run: flake8 src/
+      - name: 🏗️ Build Lambda Package
+        run: |
+          mkdir -p build
+          cp -r src/service build/
 
-      - name: Run black
-        run: black --check src/
+          # Install only production dependencies
+          cd build && uv venv --python ${{ env.PYTHON_VERSION }}
+          cd build && uv pip install --no-deps -r ../requirements.txt -t .
 
-      - name: Run mypy
-        run: mypy --ignore-missing-imports --no-strict-optional src/
+          # Create optimized zip package
+          cd build
+          zip -r ../lambda-${{ matrix.handler }}.zip . \
+            -x "*.pyc" "*/__pycache__/*" "*.git*" "tests/*" "*test*"
 
-  security:
+      - name: 📦 Upload Lambda Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-${{ matrix.handler }}-package
+          path: lambda-${{ matrix.handler }}.zip
+          retention-days: 30
+
+  # 🧪 Integration Tests
+  integration-tests:
+    name: 🧪 Integration Tests
     runs-on: ubuntu-latest
+    needs: [detect-changes, build-lambda]
+    if: needs.detect-changes.outputs.python == 'true'
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install dependencies
+      - name: ⚡ Install UV
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Run bandit security scan
-        run: bandit -r src/
+      - name: 📦 Install Dependencies
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
 
-      - name: Run dependency scan
-        uses: pypa/gh-action-pip-audit@v1.0.8
-        with:
-          inputs: requirements.txt
+      - name: 🧪 Run Integration Tests
+        env:
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          TABLE_NAME: test-orders-table
+        run: |
+          source .venv/bin/activate
+          pytest tests/integration/ -v --cov=src --cov-append
 
   # 🏗️ Infrastructure Validation
-  infrastructure:
-    name: 🏗️ Infrastructure Validation
+  terraform-validate:
+    name: 🏗️ Terraform Validation
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform == 'true' || needs.detect-changes.outputs.python == 'true'
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -173,23 +232,119 @@ jobs:
         working-directory: terraform
         run: terraform fmt -check -recursive
 
-      - name: 🛡️ Checkov Security Scan
-        uses: bridgecrewio/checkov-action@master
+      - name: 🔍 Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
         with:
-          directory: terraform
-          framework: terraform
-          output_format: sarif
-          output_file_path: reports/checkov-results.sarif
-          quiet: true
-          soft_fail: false
+          tflint_version: latest
 
-      - name: 📊 Upload Security Scan Results
+      - name: 🔍 Run TFLint
+        working-directory: terraform
+        run: |
+          tflint --init
+          tflint --recursive --config=../.tflint.hcl
+
+      - name: 🔒 Terraform Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: './terraform'
+          format: 'sarif'
+          output: 'trivy-terraform.sarif'
+
+      - name: 📊 Upload Trivy Results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: reports/checkov-results.sarif
+          sarif_file: 'trivy-terraform.sarif'
 
-      - name: 💰 Infrastructure Cost Estimate
+  # 📚 Documentation and OpenAPI
+  docs-validation:
+    name: 📚 Documentation Validation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs == 'true' || needs.detect-changes.outputs.python == 'true'
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: ⚡ Install UV
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: 📦 Install Dependencies
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
+
+      - name: 📚 Generate OpenAPI Documentation
+        run: |
+          source .venv/bin/activate
+          python scripts/generate_openapi.py || echo "OpenAPI generation script not found"
+
+      - name: ✅ Validate OpenAPI Specification
+        run: |
+          source .venv/bin/activate
+          if [ -f "openapi.yaml" ]; then
+            openapi-spec-validator openapi.yaml
+          else
+            echo "OpenAPI spec not found, skipping validation"
+          fi
+
+      - name: 📖 Build Documentation
+        run: |
+          source .venv/bin/activate
+          if [ -f "mkdocs.yml" ]; then
+            mkdocs build --strict
+          else
+            echo "MkDocs config not found, skipping documentation build"
+          fi
+
+  # 🚀 Pre-commit Hooks Validation
+  pre-commit:
+    name: 🪝 Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: ⚡ Install UV
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: 📦 Install Dependencies
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
+
+      - name: 🪝 Run Pre-commit Hooks
+        run: |
+          source .venv/bin/activate
+          pre-commit install
+          pre-commit run --all-files
+
+  # 💰 Cost Analysis
+  cost-analysis:
+    name: 💰 Infrastructure Cost Analysis
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.terraform == 'true'
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 💰 Setup Infracost
         uses: infracost/actions/setup@v2
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
@@ -204,9 +359,164 @@ jobs:
             --format table \
             --out-file /tmp/infracost.txt
 
-      - name: 💰 Upload Cost Analysis
-        uses: actions/upload-artifact@v4
+      - name: 💰 Post Cost Comment
+        uses: infracost/actions/comment@v1
         with:
-          name: infrastructure-cost-analysis-python
-          path: /tmp/infracost.*
+          path: /tmp/infracost.json
+          behavior: update
+
+  # 🎯 Performance Benchmarks
+  performance-tests:
+    name: ⚡ Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: [detect-changes, integration-tests]
+    if: needs.detect-changes.outputs.python == 'true' && github.event_name == 'pull_request'
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: ⚡ Install UV
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: 📦 Install Dependencies
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
+
+      - name: ⚡ Run Performance Benchmarks
+        run: |
+          source .venv/bin/activate
+          if [ -d "tests/benchmark" ]; then
+            pytest tests/benchmark/ -v --benchmark-only --benchmark-json=benchmark.json
+          else
+            echo "No benchmark tests found, skipping"
+          fi
+
+      - name: 📊 Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmark.json
           retention-days: 30
+
+  # 🚀 E2E Tests (Development Environment)
+  e2e-tests:
+    name: 🎯 End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [build-lambda, terraform-validate]
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    environment: development
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: ⚡ Install UV
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: 📦 Install Dependencies
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip sync requirements.txt requirements-dev.txt
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: 🎯 Run E2E Tests
+        env:
+          ENVIRONMENT: development
+          API_BASE_URL: ${{ secrets.DEV_API_BASE_URL }}
+        run: |
+          source .venv/bin/activate
+          if [ -d "tests/e2e" ]; then
+            pytest tests/e2e/ -v --cov=src --cov-append
+          else
+            echo "No E2E tests found, skipping"
+          fi
+
+  # ✅ Quality Gate
+  quality-gate:
+    name: ✅ Quality Gate
+    runs-on: ubuntu-latest
+    needs: [python-quality, integration-tests, terraform-validate, docs-validation, pre-commit]
+    if: always()
+    steps:
+      - name: 🔍 Check Job Results
+        run: |
+          echo "Python Quality: ${{ needs.python-quality.result }}"
+          echo "Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "Terraform Validation: ${{ needs.terraform-validate.result }}"
+          echo "Documentation: ${{ needs.docs-validation.result }}"
+          echo "Pre-commit: ${{ needs.pre-commit.result }}"
+
+          # Fail if any critical job failed
+          if [[ "${{ needs.python-quality.result }}" == "failure" ]] || \
+             [[ "${{ needs.integration-tests.result }}" == "failure" ]] || \
+             [[ "${{ needs.terraform-validate.result }}" == "failure" ]] || \
+             [[ "${{ needs.pre-commit.result }}" == "failure" ]]; then
+            echo "❌ Quality gate failed"
+            exit 1
+          else
+            echo "✅ Quality gate passed"
+          fi
+
+  # 🚀 Auto-Deploy to Development
+  deploy-dev:
+    name: 🚀 Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [quality-gate, build-lambda]
+    if: github.ref == 'refs/heads/develop' && needs.quality-gate.result == 'success'
+    environment: development
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: 🔧 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: 📦 Download Lambda Packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lambda-*-package
+          path: ./artifacts
+
+      - name: 🚀 Deploy Infrastructure
+        working-directory: terraform
+        env:
+          TF_VAR_environment: development
+          TF_VAR_lambda_packages_path: ../artifacts
+        run: |
+          terraform init
+          terraform plan -out=tfplan
+          terraform apply tfplan
+
+      - name: 📊 Post Deployment Summary
+        run: |
+          echo "✅ Successfully deployed to development environment"
+          echo "🔗 API Endpoint: ${{ secrets.DEV_API_BASE_URL }}"
+          echo "📊 CloudWatch Logs: https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups"

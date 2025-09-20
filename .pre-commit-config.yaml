@@ -1,0 +1,128 @@
+---
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Ensure that code doesn't have trailing whitespace
+      - id: check-ast
+        name: Check python abstract syntax trees
+      - id: check-case-conflict
+        name: Check for case conflicts
+      - id: check-json
+        name: Check JSON files format
+      - id: check-yaml
+        name: Check YAML files format
+      - id: check-toml
+        name: Check TOML files format
+      - id: check-shebang-scripts-are-executable
+        name: Check that scripts with shebangs are executable
+      - id: check-merge-conflict
+        name: Check for merge conflicts in code
+      - id: end-of-file-fixer
+        name: Files should end with empty line
+        exclude: "(.json|.yaml|.yml)$"
+      - id: double-quote-string-fixer
+        name: Strings should be single quoted
+      - id: name-tests-test
+        name: Tests should begin with test_
+        args: ["--pytest-test-first"]
+        exclude: "^(?!tests/)"
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1000']
+      - id: check-executables-have-shebangs
+        name: Check that executables have shebangs
+      - id: debug-statements
+        name: Check for debug statements
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      # Run the Ruff linter
+      - id: ruff
+        name: Run Ruff linter
+        args: [--fix]
+      # Run the Ruff formatter
+      - id: ruff-format
+        name: Run Ruff formatter
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: Run mypy type checker
+        additional_dependencies: [types-all]
+        args: [--ignore-missing-imports]
+        exclude: ^tests/
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        name: Run security checks with bandit
+        args: [-r, -x, tests/]
+        exclude: ^tests/
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.2
+    hooks:
+      - id: python-safety-dependencies-check
+        name: Check for known security vulnerabilities
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: Lint YAML files
+        args: [-d, relaxed]
+
+  - repo: local
+    hooks:
+      - id: complexity-check
+        name: Check code complexity with radon
+        entry: bash -c 'if command -v radon &> /dev/null; then radon cc --min B src/; else echo "radon not installed, skipping"; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: xenon-check
+        name: Check code complexity with xenon
+        entry: bash -c 'if command -v xenon &> /dev/null; then xenon --max-absolute B --max-modules A --max-average A src/; else echo "xenon not installed, skipping"; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest-check
+        name: Run unit tests
+        entry: bash -c 'if [ -d "tests/unit" ]; then pytest tests/unit/ -v --tb=short; else echo "No unit tests found, skipping"; fi'
+        language: system
+        pass_filenames: false
+        stages: [push]
+
+      - id: terraform-validate
+        name: Validate Terraform configuration
+        entry: bash -c 'if [ -d "terraform" ] && command -v terraform &> /dev/null; then cd terraform && terraform validate; else echo "Terraform not found or no terraform directory, skipping"; fi'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+        always_run: false
+
+      - id: terraform-fmt
+        name: Format Terraform configuration
+        entry: bash -c 'if [ -d "terraform" ] && command -v terraform &> /dev/null; then cd terraform && terraform fmt -check=true -diff=true; else echo "Terraform not found or no terraform directory, skipping"; fi'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [complexity-check, xenon-check, pytest-check, terraform-validate, terraform-fmt]
+  submodules: false

@@ -5,8 +5,10 @@ from typing import Dict, Any
 
 from aws_lambda_powertools import Logger, Tracer, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools.utilities.parameters import get_parameter
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+from aws_lambda_powertools.event_handler.exceptions import BadRequestError
 
 # Initialize AWS Powertools
 logger = Logger(service="hello-service")
@@ -37,14 +39,11 @@ def process_hello_request(event: Dict[str, Any]) -> Dict[str, Any]:
     tracer.put_annotation("path", event.get("path", "/hello"))
     tracer.put_metadata("event", event)
 
-    logger.info(
-        "Processing hello request",
-        extra={
-            "path": event.get("path"),
-            "http_method": event.get("httpMethod"),
-            "user_agent": event.get("headers", {}).get("User-Agent"),
-        },
-    )
+    logger.info("Processing hello request", extra={
+        "path": event.get("path"),
+        "http_method": event.get("httpMethod"),
+        "user_agent": event.get("headers", {}).get("User-Agent")
+    })
 
     app_version = get_app_version()
 
@@ -53,12 +52,10 @@ def process_hello_request(event: Dict[str, Any]) -> Dict[str, Any]:
         "path": event.get("path", "/hello"),
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "request_id": event.get("requestContext", {}).get("requestId", "unknown"),
-        "version": app_version,
+        "version": app_version
     }
 
-    logger.info(
-        "Hello request processed successfully", extra={"response": response_data}
-    )
+    logger.info("Hello request processed successfully", extra={"response": response_data})
     return response_data
 
 
@@ -81,15 +78,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     tracer.put_annotation("correlation_id", context.aws_request_id)
 
     try:
-        logger.info(
-            "Lambda invocation started",
-            extra={
-                "request_id": context.aws_request_id,
-                "function_name": context.function_name,
-                "function_version": context.function_version,
-                "remaining_time_ms": context.get_remaining_time_in_millis(),
-            },
-        )
+        logger.info("Lambda invocation started", extra={
+            "request_id": context.aws_request_id,
+            "function_name": context.function_name,
+            "function_version": context.function_version,
+            "remaining_time_ms": context.get_remaining_time_in_millis()
+        })
 
         # Add custom metrics
         metrics.add_metric(name="RequestCount", unit=MetricUnit.Count, value=1)
@@ -105,24 +99,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": (
-                    "Content-Type,X-Amz-Date,Authorization,X-Api-Key,"
-                    "X-Amz-Security-Token"
-                ),
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
                 "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
-                "X-Request-ID": context.aws_request_id,
+                "X-Request-ID": context.aws_request_id
             },
-            "body": json.dumps(response_data, indent=2),
+            "body": json.dumps(response_data, indent=2)
         }
 
         logger.info("Lambda invocation completed successfully")
         return response
 
     except Exception as e:
-        logger.exception(
-            "Lambda invocation failed",
-            extra={"error": str(e), "request_id": context.aws_request_id},
-        )
+        logger.exception("Lambda invocation failed", extra={
+            "error": str(e),
+            "request_id": context.aws_request_id
+        })
 
         # Add error metrics
         metrics.add_metric(name="ErrorCount", unit=MetricUnit.Count, value=1)
@@ -132,15 +123,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "X-Request-ID": context.aws_request_id,
+                "X-Request-ID": context.aws_request_id
             },
-            "body": json.dumps(
-                {
-                    "message": "Internal server error",
-                    "request_id": context.aws_request_id,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                }
-            ),
+            "body": json.dumps({
+                "message": "Internal server error",
+                "request_id": context.aws_request_id,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            })
         }
 
 
@@ -154,7 +143,7 @@ def hello_route():
     return {
         "message": "Hello from route handler!",
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "version": get_app_version(),
+        "version": get_app_version()
     }
 
 

@@ -1,6 +1,55 @@
+# AWS Lambda Python Template - Development Dependencies
+# Optimized for uv package manager
+
+# Testing framework and utilities
 pytest>=7.0.0
+pytest-mock
 pytest-cov>=4.0.0
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.0.0
+pytest-html
+pytest-benchmark
+pytest-xdist  # For parallel test execution
+python-dateutil
+python-dotenv
+
+# Code quality and formatting
+ruff>=0.2.0
+mypy>=1.8.0
+pre-commit>=3.0.0
+
+# Security and complexity analysis
 bandit>=1.7.0
+radon
+xenon
+safety  # Security vulnerability scanner
+
+# Type checking support
+types-cachetools
+types-requests
+types-python-dateutil
+
+# Development utilities
+toml
+GitPython
+ipython  # Better REPL
+rich     # Better terminal output
+
+# Documentation tools
+mkdocs-material
+mkdocs-git-revision-date-plugin
+mkdocs-glightbox
+
+# OpenAPI and validation tools
+openapi-spec-validator
+swagger-ui-bundle
+
+# Lambda development tools
+aws-sam-cli  # For local testing
+moto[all]   # AWS service mocking for tests
+
+# Performance profiling
+py-spy
+memory-profiler
+
+# HTTP testing utilities
+httpx
+responses
