@@ -1,0 +1,322 @@
+openapi: 3.0.3
+info:
+  title: Python Lambda Template API
+  description: |
+    A production-ready Core API Service template following the Serverless Acceleration Platform blueprint.
+
+    This API demonstrates:
+    - API-First design with OpenAPI as source of truth
+    - Well-Architected patterns with comprehensive observability
+    - Test-First development with pytest framework
+    - Velocity-focused deployment pipeline
+  version: 1.0.0
+  contact:
+    name: Platform Engineering
+    email: platform@company.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api-dev.company.com/v1
+    description: Development environment
+  - url: https://api-staging.company.com/v1
+    description: Staging environment
+  - url: https://api.company.com/v1
+    description: Production environment
+
+tags:
+  - name: Health
+    description: Service health and readiness endpoints
+  - name: Hello
+    description: Hello world service endpoints with Python Powertools
+  - name: Users
+    description: User management endpoints with DynamoDB
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check endpoint
+      description: Returns service health status and dependencies
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /hello:
+    get:
+      tags: [Hello]
+      summary: Hello world endpoint
+      description: Returns a greeting message with Python Powertools observability
+      operationId: getHello
+      parameters:
+        - name: name
+          in: query
+          description: Name to include in greeting
+          required: false
+          schema:
+            type: string
+            example: "Python Developer"
+      responses:
+        '200':
+          description: Successful greeting
+          headers:
+            X-Request-ID:
+              description: Unique request identifier for tracing
+              schema:
+                type: string
+                format: uuid
+            X-Correlation-ID:
+              description: Correlation ID for distributed tracing
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelloResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      description: Retrieve a list of users with pagination from DynamoDB
+      operationId: getUsers
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of users to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: cursor
+          in: query
+          description: Pagination cursor for next page
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful user list retrieval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+        - service
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        version:
+          type: string
+          example: "1.0.0"
+        service:
+          type: string
+          example: "python-lambda-template"
+        requestId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        environment:
+          type: string
+          example: "dev"
+        dependencies:
+          type: object
+          properties:
+            dynamodb:
+              type: string
+              enum: [healthy, unhealthy]
+            s3:
+              type: string
+              enum: [healthy, unhealthy]
+
+    HelloResponse:
+      type: object
+      required:
+        - message
+        - timestamp
+        - requestId
+        - version
+      properties:
+        message:
+          type: string
+          example: "Hello from Python Lambda with Powertools!"
+        path:
+          type: string
+          example: "/hello"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        requestId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        version:
+          type: string
+          example: "1.0.0"
+        environment:
+          type: string
+          example: "dev"
+        powertools:
+          type: object
+          properties:
+            logger:
+              type: boolean
+              example: true
+            tracer:
+              type: boolean
+              example: true
+            metrics:
+              type: boolean
+              example: true
+
+    UsersResponse:
+      type: object
+      required:
+        - users
+        - pagination
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        metadata:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 42
+            scannedCount:
+              type: integer
+              example: 10
+
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        email:
+          type: string
+          format: email
+          example: "user@company.com"
+        name:
+          type: string
+          example: "Python Developer"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          example: active
+
+    Pagination:
+      type: object
+      required:
+        - limit
+        - hasMore
+      properties:
+        limit:
+          type: integer
+          example: 10
+        cursor:
+          type: string
+          nullable: true
+          example: "eyJwayI6InVzZXIjMTIzIn0="
+        hasMore:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - timestamp
+        - requestId
+      properties:
+        error:
+          type: string
+          example: "ValidationError"
+        message:
+          type: string
+          example: "Invalid parameter value"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        requestId:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        path:
+          type: string
+          example: "/hello"
+        details:
+          type: object
+          description: Additional error context and validation details

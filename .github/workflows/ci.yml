@@ -1,0 +1,229 @@
+name: 🚀 Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'lambda-templates/lambda-python-template/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'lambda-templates/lambda-python-template/**'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      functions: ${{ steps.changes.outputs.functions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed functions
+        id: changes
+        run: |
+          # Get list of all function directories
+          FUNCTIONS=$(find src -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n")[:-1]')
+          echo "functions=$FUNCTIONS" >> $GITHUB_OUTPUT
+          echo "Detected functions: $FUNCTIONS"
+
+  build:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function: ${{ fromJson(needs.detect-changes.outputs.functions) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install function dependencies
+        run: |
+          if [ -f "src/${{ matrix.function }}/requirements.txt" ]; then
+            pip install -r src/${{ matrix.function }}/requirements.txt
+          fi
+
+      - name: Run tests
+        run: |
+          if [ -f "src/${{ matrix.function }}/test_*.py" ] || [ -d "src/${{ matrix.function }}/tests" ]; then
+            cd src/${{ matrix.function }}
+            python -m pytest -v
+          else
+            echo "No tests found for ${{ matrix.function }}, skipping"
+          fi
+
+      - name: Build function package
+        run: |
+          mkdir -p build
+          cd src/${{ matrix.function }}
+
+          # Create temporary directory
+          mkdir -p ../../build/temp_${{ matrix.function }}
+
+          # Copy function files
+          cp -r . ../../build/temp_${{ matrix.function }}/
+
+          # Install dependencies if requirements.txt exists
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt -t ../../build/temp_${{ matrix.function }}/ --no-deps
+          fi
+
+          # Create zip package
+          cd ../../build/temp_${{ matrix.function }}
+          zip -r ../${{ matrix.function }}.zip . -x "test_*" "tests/*" "__pycache__/*" "*.pyc"
+
+          # Clean up
+          cd ..
+          rm -rf temp_${{ matrix.function }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.function }}-lambda-python
+          path: build/${{ matrix.function }}.zip
+          retention-days: 30
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run flake8
+        run: flake8 src/
+
+      - name: Run black
+        run: black --check src/
+
+      - name: Run mypy
+        run: mypy src/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run bandit security scan
+        run: bandit -r src/
+
+      - name: Run dependency scan
+        uses: pypa/gh-action-pip-audit@v1.0.8
+        with:
+          inputs: requirements.txt
+
+  # 🏗️ Infrastructure Validation
+  infrastructure:
+    name: 🏗️ Infrastructure Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: 🔧 Terraform Init
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: ✅ Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: 🎨 Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: 🔍 TFLint Security Scan
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: 🔍 Run TFLint
+        working-directory: terraform
+        run: |
+          tflint --init
+          tflint --recursive --config=../.tflint.hcl
+
+      - name: 🛡️ Checkov Security Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform
+          framework: terraform
+          output_format: sarif
+          output_file_path: reports/checkov-results.sarif
+          quiet: true
+          soft_fail: false
+
+      - name: 📊 Upload Security Scan Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: reports/checkov-results.sarif
+
+      - name: 💰 Infrastructure Cost Estimate
+        uses: infracost/actions/setup@v2
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: 💰 Generate Cost Estimate
+        run: |
+          cd terraform
+          infracost breakdown --path . \
+            --format json \
+            --out-file /tmp/infracost.json
+          infracost output --path /tmp/infracost.json \
+            --format table \
+            --out-file /tmp/infracost.txt
+
+      - name: 💰 Upload Cost Analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-cost-analysis-python
+          path: /tmp/infracost.*
+          retention-days: 30

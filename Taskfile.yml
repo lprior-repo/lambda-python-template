@@ -1,0 +1,369 @@
+version: '3'
+
+# Serverless Acceleration Platform - Python Template
+# Velocity First: Ship with Confidence & Discipline
+
+vars:
+  PROJECT_NAME: lambda-python-template
+  AWS_REGION: us-east-1
+  ENVIRONMENT: dev
+  PYTHON_VERSION: 3.11
+
+env:
+  AWS_REGION: "{{.AWS_REGION}}"
+  PYTHONPATH: "./src"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  # 🚀 Velocity First: Build & Package
+  install:
+    desc: Install Python dependencies
+    cmds:
+      - python{{.PYTHON_VERSION}} -m pip install --upgrade pip
+      - pip install -r requirements.txt
+      - pip install -r requirements-dev.txt
+    sources:
+      - requirements.txt
+      - requirements-dev.txt
+
+  build:
+    desc: Build Python Lambda functions
+    deps: [install]
+    cmds:
+      - mkdir -p build/hello build/users
+      - cp -r src/hello/* build/hello/
+      - cp -r src/users/* build/users/
+      - pip install -r requirements.txt -t build/hello/
+      - pip install -r requirements.txt -t build/users/
+    sources:
+      - src/**/*.py
+      - requirements.txt
+    generates:
+      - build/hello/**
+      - build/users/**
+
+  package:
+    desc: Package Lambda functions for deployment
+    deps: [build]
+    cmds:
+      - cd build/hello && zip -r ../hello.zip . -x "*.pyc" "__pycache__/*"
+      - cd build/users && zip -r ../users.zip . -x "*.pyc" "__pycache__/*"
+    sources:
+      - build/hello/**
+      - build/users/**
+    generates:
+      - build/*.zip
+
+  # 🧪 Test-First: Build with Quality
+  test:
+    desc: Run all tests (unit + integration)
+    deps: [install]
+    cmds:
+      - python -m pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+
+  test:unit:
+    desc: Run unit tests only
+    deps: [install]
+    cmds:
+      - python -m pytest tests/unit/ -v
+
+  test:integration:
+    desc: Run integration tests
+    deps: [install]
+    cmds:
+      - python -m pytest tests/integration/ -v
+
+  test:watch:
+    desc: Run tests in watch mode for TDD
+    deps: [install]
+    cmds:
+      - python -m pytest tests/ -v --cov=src -f
+
+  test:coverage:
+    desc: Generate detailed test coverage report
+    deps: [install]
+    cmds:
+      - python -m pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
+      - echo "📊 Coverage report: htmlcov/index.html"
+
+  # 📊 Observability First: Ship with Insight
+  logs:
+    desc: Tail Lambda function logs
+    cmds:
+      - aws logs tail /aws/lambda/{{.PROJECT_NAME}}-hello --follow
+
+  logs:hello:
+    desc: Get hello function logs
+    cmds:
+      - aws logs describe-log-streams --log-group-name /aws/lambda/{{.PROJECT_NAME}}-hello --order-by LastEventTime --descending --max-items 5
+      - aws logs get-log-events --log-group-name /aws/lambda/{{.PROJECT_NAME}}-hello --log-stream-name $(aws logs describe-log-streams --log-group-name /aws/lambda/{{.PROJECT_NAME}}-hello --order-by LastEventTime --descending --max-items 1 --query 'logStreams[0].logStreamName' --output text) --limit 50
+
+  logs:users:
+    desc: Get users function logs
+    cmds:
+      - aws logs describe-log-streams --log-group-name /aws/lambda/{{.PROJECT_NAME}}-users --order-by LastEventTime --descending --max-items 5
+      - aws logs get-log-events --log-group-name /aws/lambda/{{.PROJECT_NAME}}-users --log-stream-name $(aws logs describe-log-streams --log-group-name /aws/lambda/{{.PROJECT_NAME}}-users --order-by LastEventTime --descending --max-items 1 --query 'logStreams[0].logStreamName' --output text) --limit 50
+
+  metrics:
+    desc: View CloudWatch metrics dashboard
+    cmds:
+      - echo "📊 CloudWatch Dashboard: https://{{.AWS_REGION}}.console.aws.amazon.com/cloudwatch/home?region={{.AWS_REGION}}#dashboards:name={{.PROJECT_NAME}}"
+      - echo "🔍 X-Ray Service Map: https://{{.AWS_REGION}}.console.aws.amazon.com/xray/home?region={{.AWS_REGION}}#/service-map"
+
+  # 🏗️ Infrastructure as Code
+  tf:init:
+    desc: Initialize Terraform
+    dir: terraform
+    cmds:
+      - terraform init
+
+  tf:plan:
+    desc: Plan Terraform changes
+    dir: terraform
+    deps: [tf:init]
+    cmds:
+      - terraform plan -var="environment={{.ENVIRONMENT}}"
+
+  tf:apply:
+    desc: Apply Terraform changes
+    dir: terraform
+    deps: [package]
+    cmds:
+      - terraform apply -var="environment={{.ENVIRONMENT}}" -auto-approve
+
+  tf:destroy:
+    desc: Destroy Terraform infrastructure
+    dir: terraform
+    cmds:
+      - terraform destroy -var="environment={{.ENVIRONMENT}}" -auto-approve
+
+  # 🔐 OIDC Bootstrap
+  bootstrap:
+    desc: Bootstrap OIDC for GitHub Actions deployment
+    dir: terraform
+    deps: [tf:init]
+    cmds:
+      - |
+        echo "🚀 Bootstrapping OIDC infrastructure..."
+        read -p "GitHub Organization: " GITHUB_ORG
+        read -p "GitHub Repository: " GITHUB_REPO
+        read -p "Create new OIDC provider? (y/n): " CREATE_OIDC
+        CREATE_OIDC_BOOL=$([ "$CREATE_OIDC" = "y" ] && echo "true" || echo "false")
+        terraform plan \
+          -var="github_org=$GITHUB_ORG" \
+          -var="github_repo=$GITHUB_REPO" \
+          -var="create_oidc_provider=$CREATE_OIDC_BOOL" \
+          -var="environment={{.ENVIRONMENT}}" \
+          -out=bootstrap.tfplan
+        echo ""
+        echo "📋 Review the plan above. Continue? (y/n)"
+        read -p "> " CONTINUE
+        if [ "$CONTINUE" = "y" ]; then
+          terraform apply bootstrap.tfplan
+          echo ""
+          echo "✅ OIDC infrastructure created!"
+          echo "🔧 Bootstrap script generated at: scripts/bootstrap-oidc.sh"
+          echo "📄 Run the script to generate GitHub Actions workflow"
+        else
+          echo "❌ Bootstrap cancelled"
+        fi
+
+  tf:validate:
+    desc: Validate Terraform configuration
+    dir: terraform
+    cmds:
+      - terraform validate
+      - terraform fmt -check
+
+  tf:security:
+    desc: Run security checks on Terraform
+    dir: terraform
+    cmds:
+      - |
+        if command -v tfsec >/dev/null 2>&1; then
+          tfsec .
+        else
+          echo "⚠️  tfsec not installed. Install with: pip install tfsec"
+        fi
+
+  # 🛡️ Well-Architected: Ship with Excellence
+  lint:
+    desc: Run Python linting (flake8, black, isort)
+    deps: [install]
+    cmds:
+      - black --check src/ tests/
+      - isort --check-only src/ tests/
+      - flake8 src/ tests/
+
+  lint:fix:
+    desc: Fix Python code formatting
+    deps: [install]
+    cmds:
+      - black src/ tests/
+      - isort src/ tests/
+
+  security:
+    desc: Run security audit
+    deps: [install]
+    cmds:
+      - pip-audit
+      - bandit -r src/
+
+  type:check:
+    desc: Run type checking with mypy
+    deps: [install]
+    cmds:
+      - mypy src/
+
+  validate:
+    desc: Run all validation checks
+    deps: [install]
+    cmds:
+      - task: lint
+      - task: type:check
+      - task: test
+      - task: tf:validate
+      - task: tf:security
+      - task: security
+
+  # 🚀 Deployment Pipeline
+  deploy:dev:
+    desc: Deploy to development environment
+    cmds:
+      - task: validate
+      - task: tf:apply
+        vars: {ENVIRONMENT: dev}
+
+  deploy:staging:
+    desc: Deploy to staging environment
+    cmds:
+      - task: validate
+      - task: tf:apply
+        vars: {ENVIRONMENT: staging}
+
+  deploy:prod:
+    desc: Deploy to production environment
+    cmds:
+      - task: validate
+      - task: tf:apply
+        vars: {ENVIRONMENT: prod}
+
+  # 🧹 Cleanup
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf build/
+      - rm -rf htmlcov/
+      - rm -rf .coverage
+      - rm -rf .pytest_cache/
+      - rm -rf **/__pycache__/
+      - rm -rf *.egg-info/
+
+  clean:tf:
+    desc: Clean Terraform state (DANGEROUS)
+    dir: terraform
+    cmds:
+      - rm -rf .terraform/
+      - rm -f .terraform.lock.hcl
+      - rm -f terraform.tfstate*
+
+  # 🔍 Development Tools
+  dev:setup:
+    desc: Setup development environment
+    cmds:
+      - task: install
+      - task: tf:init
+      - echo "✅ Python development environment ready!"
+      - echo "🐍 Python version: {{.PYTHON_VERSION}}"
+      - echo "💡 Run 'task test:watch' for TDD workflow"
+      - echo "🚀 Run 'task deploy:dev' to deploy"
+
+  dev:shell:
+    desc: Start interactive Python shell with imports
+    deps: [install]
+    cmds:
+      - python -c "
+        import sys; sys.path.insert(0, 'src');
+        from src.hello.lambda_function import *;
+        from aws_lambda_powertools import Logger, Tracer, Metrics;
+        print('🐍 Python shell ready with Lambda imports');
+        import code; code.interact(local=locals())"
+
+  dev:invoke:
+    desc: Invoke Lambda function locally using SAM
+    deps: [build]
+    cmds:
+      - |
+        echo "🧪 Invoking hello function locally..."
+        if command -v sam >/dev/null 2>&1; then
+          sam local invoke HelloFunction --event events/api-gateway-event.json
+        else
+          echo "⚠️  AWS SAM CLI not installed"
+        fi
+
+  api:docs:
+    desc: Generate API documentation from OpenAPI spec
+    cmds:
+      - |
+        if command -v redoc-cli >/dev/null 2>&1; then
+          redoc-cli build openapi.yaml --output docs/api.html
+          echo "📚 API documentation generated: docs/api.html"
+        else
+          echo "⚠️  redoc-cli not installed. Run: npm install -g redoc-cli"
+        fi
+
+  api:validate:
+    desc: Validate OpenAPI specification
+    cmds:
+      - |
+        if python -c "import openapi_spec_validator" 2>/dev/null; then
+          python -c "
+          import yaml
+          from openapi_spec_validator import validate_spec
+          with open('openapi.yaml') as f:
+              spec = yaml.safe_load(f)
+          validate_spec(spec)
+          print('✅ OpenAPI spec is valid')
+          "
+        else
+          echo "⚠️  openapi-spec-validator not installed. Run: pip install openapi-spec-validator"
+        fi
+
+  # 📊 Well-Architected Review
+  review:
+    desc: Open Well-Architected review document
+    cmds:
+      - |
+        if [ -f "WELL_ARCHITECTED.md" ]; then
+          echo "📋 Opening Well-Architected review..."
+          open WELL_ARCHITECTED.md 2>/dev/null || echo "📄 Review document: WELL_ARCHITECTED.md"
+        else
+          echo "❌ WELL_ARCHITECTED.md not found. Run 'task generate:docs' first."
+        fi
+
+  generate:docs:
+    desc: Generate project documentation
+    cmds:
+      - task: api:docs
+      - task: test:coverage
+      - echo "📚 Documentation generated successfully!"
+      - echo "📊 Coverage report: htmlcov/index.html"
+      - echo "📚 API docs: docs/api.html"
+
+  # 🔬 Advanced Development
+  profile:
+    desc: Profile Lambda function performance
+    deps: [install]
+    cmds:
+      - python -m cProfile -o profile.stats src/hello/lambda_function.py
+      - python -c "import pstats; p = pstats.Stats('profile.stats'); p.sort_stats('cumulative').print_stats(20)"
+
+  benchmark:
+    desc: Run performance benchmarks
+    deps: [install]
+    cmds:
+      - python -m pytest tests/benchmark/ -v --benchmark-only
